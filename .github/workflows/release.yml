@@ -1,0 +1,50 @@
+name: Publish Release
+
+# Triggered when the private source repo CI pushes a tag and the release
+# artifacts via SSH. Turns the pushed `releases/<tag>/` directory into a
+# proper GitHub Release on this repo.
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Validate tag format defensively (TAG comes from github.ref_name)
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' does not match expected format vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          DIR="releases/${TAG}"
+          if [ ! -d "$DIR" ]; then
+            echo "::error::No artifacts directory at $DIR"
+            ls -la releases/ 2>/dev/null || echo "(no releases/ directory)"
+            exit 1
+          fi
+          mapfile -t zips < <(find "$DIR" -maxdepth 1 -name 'RMM_*.zip' -type f)
+          if [ "${#zips[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one RMM_*.zip in $DIR, found ${#zips[@]}"
+            exit 1
+          fi
+          ZIP="${zips[0]}"
+          SHA="$DIR/SHA256SUMS"
+          if [ ! -f "$SHA" ]; then
+            echo "::error::Missing $SHA"
+            exit 1
+          fi
+          NOTES=$(printf 'Automated release of Earney IT Support %s.\n\nSHA256 sums of the attached artifacts are in `SHA256SUMS`.' "$TAG")
+          gh release create "$TAG" "$ZIP" "$SHA" --title "$TAG" --notes "$NOTES"
