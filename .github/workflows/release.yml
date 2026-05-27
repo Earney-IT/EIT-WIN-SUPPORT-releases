@@ -35,16 +35,26 @@ jobs:
             ls -la releases/ 2>/dev/null || echo "(no releases/ directory)"
             exit 1
           fi
+          # As of v1.0.46 the source repo publishes a single Inno Setup
+          # installer .exe instead of an RMM_*.zip. Prefer the .exe; fall
+          # back to the old zip pattern so older tags (if ever re-tagged)
+          # still re-publish cleanly.
+          mapfile -t exes < <(find "$DIR" -maxdepth 1 -name 'EarneyITSupportSetup-*.exe' -type f)
           mapfile -t zips < <(find "$DIR" -maxdepth 1 -name 'RMM_*.zip' -type f)
-          if [ "${#zips[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one RMM_*.zip in $DIR, found ${#zips[@]}"
+          ARTIFACT=""
+          if [ "${#exes[@]}" -eq 1 ]; then
+            ARTIFACT="${exes[0]}"
+          elif [ "${#zips[@]}" -eq 1 ]; then
+            ARTIFACT="${zips[0]}"
+          else
+            echo "::error::Expected exactly one EarneyITSupportSetup-*.exe (preferred) or RMM_*.zip in $DIR"
+            echo "::error::Found: ${#exes[@]} installer EXE(s), ${#zips[@]} zip(s)"
             exit 1
           fi
-          ZIP="${zips[0]}"
           SHA="$DIR/SHA256SUMS"
           if [ ! -f "$SHA" ]; then
             echo "::error::Missing $SHA"
             exit 1
           fi
-          NOTES=$(printf 'Automated release of Earney IT Support %s.\n\nSHA256 sums of the attached artifacts are in `SHA256SUMS`.' "$TAG")
-          gh release create "$TAG" "$ZIP" "$SHA" --title "$TAG" --notes "$NOTES"
+          NOTES=$(printf 'Automated release of Earney IT Support %s.\n\nDownload `%s` and run it on a Windows machine to install or update.\nSHA-256 sums of the attached artifacts are in `SHA256SUMS`.' "$TAG" "$(basename "$ARTIFACT")")
+          gh release create "$TAG" "$ARTIFACT" "$SHA" --title "$TAG" --notes "$NOTES"
