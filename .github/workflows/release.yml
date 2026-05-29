@@ -24,10 +24,19 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # Validate tag format defensively (TAG comes from github.ref_name)
-          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag '$TAG' does not match expected format vMAJOR.MINOR.PATCH"
+          # Validate tag format defensively (TAG comes from github.ref_name).
+          # Allows an optional pre-release suffix (e.g. v1.0.64-rc.5) used by
+          # dispatch test builds; those are published as GitHub pre-releases so
+          # /releases/latest (the fleet auto-updater's source) ignores them.
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+            echo "::error::Tag '$TAG' does not match expected format vMAJOR.MINOR.PATCH[-suffix]"
             exit 1
+          fi
+          # A pre-release suffix (anything after a hyphen) means: do NOT make
+          # this the 'latest' release the fleet pulls.
+          PRERELEASE=""
+          if [[ "$TAG" == *-* ]]; then
+            PRERELEASE="--prerelease"
           fi
           DIR="releases/${TAG}"
           if [ ! -d "$DIR" ]; then
@@ -57,4 +66,4 @@ jobs:
             exit 1
           fi
           NOTES=$(printf 'Automated release of Earney IT Support %s.\n\nDownload `%s` and run it on a Windows machine to install or update.\nSHA-256 sums of the attached artifacts are in `SHA256SUMS`.' "$TAG" "$(basename "$ARTIFACT")")
-          gh release create "$TAG" "$ARTIFACT" "$SHA" --title "$TAG" --notes "$NOTES"
+          gh release create "$TAG" "$ARTIFACT" "$SHA" --title "$TAG" --notes "$NOTES" $PRERELEASE
