@@ -6,13 +6,18 @@ name: Publish Release
 
 on:
   push:
-    tags: [ 'v*' ]
+    tags:
+      - 'v*'
+      - 'electron-v*'
 
 permissions:
   contents: write
 
 jobs:
   release:
+    # C# fleet line: vMAJOR.MINOR.PATCH[-suffix]. Skip electron-* tags — those
+    # are handled by the `electron` job below.
+    if: ${{ !startsWith(github.ref_name, 'electron-') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tag
@@ -67,3 +72,59 @@ jobs:
           fi
           NOTES=$(printf 'Automated release of Earney IT Support %s.\n\nDownload `%s` and run it on a Windows machine to install or update.\nSHA-256 sums of the attached artifacts are in `SHA256SUMS`.' "$TAG" "$(basename "$ARTIFACT")")
           gh release create "$TAG" "$ARTIFACT" "$SHA" --title "$TAG" --notes "$NOTES" $PRERELEASE
+
+  # Electron PREVIEW line — a SEPARATE 0.x prerelease line from the C# fleet.
+  # Tags are `electron-vMAJOR.MINOR.PATCH[-suffix]`. ALWAYS published as a
+  # GitHub PRERELEASE so /releases/latest (the C# fleet auto-updater's source)
+  # never picks them up. The Electron app's in-app updater (electron-updater)
+  # reads the attached `latest.yml` + .exe from this Release to do RC updates.
+  electron:
+    if: ${{ startsWith(github.ref_name, 'electron-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release (Electron preview)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # electron-vMAJOR.MINOR.PATCH with an optional pre-release suffix
+          # (e.g. electron-v0.1.5-rc.5). The Electron preview is ALWAYS a
+          # prerelease, but validate defensively either way.
+          if ! [[ "$TAG" =~ ^electron-v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+            echo "::error::Tag '$TAG' does not match electron-vMAJOR.MINOR.PATCH[-suffix]"
+            exit 1
+          fi
+          DIR="releases/${TAG}"
+          if [ ! -d "$DIR" ]; then
+            echo "::error::No artifacts directory at $DIR"
+            ls -la releases/ 2>/dev/null || echo "(no releases/ directory)"
+            exit 1
+          fi
+          # electron-builder produces exactly one NSIS installer .exe. The
+          # electron-updater metadata is `latest.yml` (default channel). Both,
+          # plus SHA256SUMS, must be Release ASSETS so the in-app updater can
+          # read latest.yml and pull the .exe.
+          mapfile -t exes < <(find "$DIR" -maxdepth 1 -name '*.exe' -type f)
+          if [ "${#exes[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one .exe in $DIR; found ${#exes[@]}"
+            find "$DIR" -maxdepth 1 -type f
+            exit 1
+          fi
+          EXE="${exes[0]}"
+          YML="$DIR/latest.yml"
+          if [ ! -f "$YML" ]; then
+            echo "::error::Missing $YML (electron-updater metadata)"
+            exit 1
+          fi
+          SHA="$DIR/SHA256SUMS"
+          if [ ! -f "$SHA" ]; then
+            echo "::error::Missing $SHA"
+            exit 1
+          fi
+          NOTES=$(printf 'Earney IT Support — ELECTRON PREVIEW %s (prerelease, unsigned).\n\nIn-app RC updates are delivered from this release via electron-updater.\nFirst install: download and run `%s` once; after that the app updates itself in Settings.\nSHA-256 sums are in `SHA256SUMS`.' "$TAG" "$(basename "$EXE")")
+          # ALWAYS --prerelease for this line.
+          gh release create "$TAG" "$EXE" "$YML" "$SHA" --title "$TAG" --notes "$NOTES" --prerelease
