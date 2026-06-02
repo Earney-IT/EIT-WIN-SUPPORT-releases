@@ -1,0 +1,8 @@
+version: 0.1.20-rc.20
+files:
+  - url: EarneyITSupport-Electron-0.1.20-rc.20-Setup.exe
+    sha512: P35OwMuTVSgLTljiBm+xcZyUXsdTW19PVBpVywHB/RgLItkKO8hdYFO7NU17xACHqR5ClHrHkrXT95TuHCsBLQ==
+    size: 79907868
+path: EarneyITSupport-Electron-0.1.20-rc.20-Setup.exe
+sha512: P35OwMuTVSgLTljiBm+xcZyUXsdTW19PVBpVywHB/RgLItkKO8hdYFO7NU17xACHqR5ClHrHkrXT95TuHCsBLQ==
+releaseDate: '2026-06-02T21:39:51.096Z'
