@@ -104,17 +104,27 @@ jobs:
             ls -la releases/ 2>/dev/null || echo "(no releases/ directory)"
             exit 1
           fi
-          # electron-builder produces exactly one NSIS installer .exe. The
-          # electron-updater metadata is `latest.yml` (default channel). Both,
-          # plus SHA256SUMS, must be Release ASSETS so the in-app updater can
-          # read latest.yml and pull the .exe.
-          mapfile -t exes < <(find "$DIR" -maxdepth 1 -name '*.exe' -type f)
-          if [ "${#exes[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one .exe in $DIR; found ${#exes[@]}"
+          # electron-builder produces TWO Windows artifacts for this preview:
+          #   * a PER-USER NSIS installer (*Setup.exe) — required for
+          #     electron-updater (paired with latest.yml).
+          #   * a PORTABLE *Portable.exe — a no-install/no-UAC fallback that runs
+          #     the app directly.
+          # The electron-updater metadata is `latest.yml` (default channel). All
+          # of these, plus SHA256SUMS, must be Release ASSETS so the in-app
+          # updater can read latest.yml and pull the installer, and so the user
+          # can grab either the installer or the portable.
+          SETUP=$(find "$DIR" -maxdepth 1 -name '*Setup.exe' -type f | head -n1)
+          if [ -z "$SETUP" ]; then
+            echo "::error::Missing per-user installer (*Setup.exe) in $DIR"
             find "$DIR" -maxdepth 1 -type f
             exit 1
           fi
-          EXE="${exes[0]}"
+          PORTABLE=$(find "$DIR" -maxdepth 1 -name '*Portable.exe' -type f | head -n1)
+          if [ -z "$PORTABLE" ]; then
+            echo "::error::Missing portable (*Portable.exe) in $DIR"
+            find "$DIR" -maxdepth 1 -type f
+            exit 1
+          fi
           YML="$DIR/latest.yml"
           if [ ! -f "$YML" ]; then
             echo "::error::Missing $YML (electron-updater metadata)"
@@ -125,6 +135,6 @@ jobs:
             echo "::error::Missing $SHA"
             exit 1
           fi
-          NOTES=$(printf 'Earney IT Support — ELECTRON PREVIEW %s (prerelease, unsigned).\n\nIn-app RC updates are delivered from this release via electron-updater.\nFirst install: download and run `%s` once; after that the app updates itself in Settings.\nSHA-256 sums are in `SHA256SUMS`.' "$TAG" "$(basename "$EXE")")
+          NOTES=$(printf 'Earney IT Support — ELECTRON PREVIEW %s (prerelease, unsigned).\n\nTwo ways to run it:\n  * `%s` — PER-USER installer, NO admin/UAC prompt; in-app RC updates are delivered from this release via electron-updater.\n  * `%s` — PORTABLE; just run it, no install, no UAC.\nSHA-256 sums are in `SHA256SUMS`.' "$TAG" "$(basename "$SETUP")" "$(basename "$PORTABLE")")
           # ALWAYS --prerelease for this line.
-          gh release create "$TAG" "$EXE" "$YML" "$SHA" --title "$TAG" --notes "$NOTES" --prerelease
+          gh release create "$TAG" "$SETUP" "$PORTABLE" "$YML" "$SHA" --title "$TAG" --notes "$NOTES" --prerelease
