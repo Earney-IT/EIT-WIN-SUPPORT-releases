@@ -135,6 +135,18 @@ jobs:
             echo "::error::Missing $SHA"
             exit 1
           fi
-          NOTES=$(printf 'Earney IT Support — ELECTRON PREVIEW %s (prerelease, unsigned).\n\nTwo ways to run it:\n  * `%s` — PER-USER installer, NO admin/UAC prompt; in-app RC updates are delivered from this release via electron-updater.\n  * `%s` — PORTABLE; just run it, no install, no UAC.\nSHA-256 sums are in `SHA256SUMS`.' "$TAG" "$(basename "$SETUP")" "$(basename "$PORTABLE")")
+          # OPTIONAL: machine-wide (all-users) installer for silent RMM (Datto)
+          # deploy as SYSTEM. The build's machine-wide pass is best-effort
+          # (continue-on-error), so this ships only when produced — attach it
+          # when present, never require it. NOTE: '*Setup.exe' above does NOT
+          # match '*Setup-Machine.exe', so SETUP stays the per-user installer.
+          MACHINE=$(find "$DIR" -maxdepth 1 -name '*Setup-Machine.exe' -type f | head -n1)
+          ASSETS=("$SETUP" "$PORTABLE" "$YML" "$SHA")
+          MACHINE_NOTE=""
+          if [ -n "$MACHINE" ]; then
+            ASSETS+=("$MACHINE")
+            MACHINE_NOTE=$(printf '\n  * `%s` — MACHINE-WIDE (all-users) installer for silent RMM deploy as SYSTEM (`<installer> /S`); installs to Program Files, needs admin.' "$(basename "$MACHINE")")
+          fi
+          NOTES=$(printf 'Earney IT Support — ELECTRON PREVIEW %s (prerelease, unsigned).\n\nWays to run it:\n  * `%s` — PER-USER installer, NO admin/UAC prompt; in-app RC updates are delivered from this release via electron-updater.\n  * `%s` — PORTABLE; just run it, no install, no UAC.%s\nSHA-256 sums are in `SHA256SUMS`.' "$TAG" "$(basename "$SETUP")" "$(basename "$PORTABLE")" "$MACHINE_NOTE")
           # ALWAYS --prerelease for this line.
-          gh release create "$TAG" "$SETUP" "$PORTABLE" "$YML" "$SHA" --title "$TAG" --notes "$NOTES" --prerelease
+          gh release create "$TAG" "${ASSETS[@]}" --title "$TAG" --notes "$NOTES" --prerelease
